@@ -62,37 +62,8 @@ prometheus() {
   }
   case "$1" in
   NewGauge)
-    local arg help='' name=''
     shift
-    # Parse the options on the NewGauge command line.
-    for arg; do
-      case "${arg}" in
-      help=*) help="${arg#*=}";;
-      name=*) name="${arg#*=}";;
-      *)
-        printf 1>&2 'FATAL: %s: bad arg "%s"\n' "prometheus NewGauge" "${arg}"
-        exit 2
-      esac
-    done
-    if [[ -z "${help}" || -z "${name}" ]]; then
-      printf 1>&2 'ERROR: %s: missing required option (help or name)\n' \
-        "prometheus NewGauge"
-      return 1
-    fi
-    # Validate the options.
-    if [[ "${name}" =~ ^[a-zA-Z_:][a-zA-Z0-9_:]*$ ]]; then
-      if [[ -n "${prometheus["TYPE:${name}"]}" ]]; then
-        printf 1>&2 'WARNING: %s: "%s" already a registered %s metric.\n' \
-          "prometheus NewGauge" "${name}" "${prometheus["TYPE:${name}"]}"
-      fi
-    else
-      printf 1>&2 'FATAL: %s: Invalid metric name "%s"\n' \
-        "prometheus NewGauge" "${name}"
-      exit 2
-    fi
-    prometheus["TYPE:${name}"]="gauge"
-    prometheus["HELP:${name}"]="$(prometheus internal-escape-help "${help}")"
-    eval "${name}"'() { prometheus internal-Gauge '"${name}"' "$@"; }'
+    prometheus internal-new-metric 'prometheus NewGauge' gauge "$@"
     ;;
 
   PushAdd)
@@ -140,7 +111,7 @@ prometheus() {
       url="${url}/instances/${instance}"
     fi
     # POST the payload to the URL.
-    echo -En "${payload}" | sed 's/^/payload>/' 1>&2
+    #echo -En "${payload}" | sed 's/^/payload>/' 1>&2
     curl -q \
       --data-binary '@-' <<<"${payload}" \
       --user-agent 'Prometheus-client_bash/prerelease' \
@@ -164,7 +135,44 @@ prometheus() {
     esac
     ;;
 
-  internal-Gauge)
+  internal-new-metric)
+    local caller="$2"
+    local type="$3"
+    shift 3
+    local arg help='' name=''
+    # Parse the options on the command line.
+    for arg; do
+      case "${arg}" in
+      help=*) help="${arg#*=}";;
+      name=*) name="${arg#*=}";;
+      *)
+        printf 1>&2 'FATAL: %s: bad arg "%s"\n' "${caller}" "${arg}"
+        exit 2
+      esac
+    done
+    if [[ -z "${help}" || -z "${name}" ]]; then
+      printf 1>&2 'ERROR: %s: missing required option (help or name)\n' \
+        "${caller}"
+      return 1
+    fi
+    # Validate the options.
+    if [[ "${name}" =~ ^[a-zA-Z_:][a-zA-Z0-9_:]*$ ]]; then
+      if [[ -n "${prometheus["TYPE:${name}"]}" ]]; then
+        printf 1>&2 'WARNING: %s: "%s" already a registered %s metric.\n' \
+          "${caller}" "${name}" "${prometheus["TYPE:${name}"]}"
+      fi
+    else
+      printf 1>&2 'FATAL: %s: Invalid metric name "%s"\n' \
+        "${caller}" "${name}"
+      exit 2
+    fi
+    prometheus["TYPE:${name}"]="${type}"
+    prometheus["HELP:${name}"]="$(prometheus internal-escape-help "${help}")"
+    local dollar_at='"$@"'
+    eval "${name}() { prometheus internal-${type} ${name} ${dollar_at}; }"
+    ;;
+
+  internal-gauge)
     # This handles all calls to Gauges (each Gauge is a shell function).
     local name="$2"
     shift 2
