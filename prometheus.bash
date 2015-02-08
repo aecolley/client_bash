@@ -117,10 +117,14 @@ prometheus() {
     local payload=''
     local name
     for name in "${metricnames[@]}"; do
-      payload="${payload}# TYPE ${name} ${prometheus["TYPE:${name}"]}${linefeed}"
-      payload="${payload}# HELP ${name} ${prometheus["HELP:${name}"]}${linefeed}"
+      local first='t'
       for key in "${!prometheus[@]}"; do
         if [[ "${key}" =~ ^METRIC:"${name}"([{].*)?$ ]]; then
+          if [[ -n "${first}" ]]; then
+            payload="${payload}# TYPE ${name} ${prometheus["TYPE:${name}"]}${linefeed}"
+            payload="${payload}# HELP ${name} ${prometheus["HELP:${name}"]}${linefeed}"
+            first=''
+          fi
           payload="${payload}${key#METRIC:} ${prometheus["${key}"]}${linefeed}"
         fi
       done
@@ -136,7 +140,7 @@ prometheus() {
       url="${url}/instances/${instance}"
     fi
     # POST the payload to the URL.
-    #echo -En "${payload}" | sed 's/^/payload>/' 1>&2
+    echo -En "${payload}" | sed 's/^/payload>/' 1>&2
     curl -q \
       --data-binary '@-' <<<"${payload}" \
       --user-agent 'Prometheus-client_bash/prerelease' \
