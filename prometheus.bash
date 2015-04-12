@@ -79,19 +79,15 @@ declare -A io_prometheus_labelnames
 io::prometheus::DiscardAllMetrics() {
   local key
   unset io_prometheus_registered_collectors
-  declare -a io_prometheus_registered_collectors
-  for key in "${!io_prometheus_value[@]}"; do
-    unset io_prometheus_value["${key}"]
-  done
-  for key in "${!io_prometheus_help[@]}"; do
-    unset io_prometheus_help["${key}"]
-  done
-  for key in "${!io_prometheus_type[@]}"; do
-    unset io_prometheus_type["${key}"]
-  done
-  for key in "${!io_prometheus_labelnames[@]}"; do
-    unset io_prometheus_labelnames["${key}"]
-  done
+  declare -a -g io_prometheus_registered_collectors
+  unset io_prometheus_value
+  declare -A -g io_prometheus_value
+  unset io_prometheus_help
+  declare -A -g io_prometheus_help
+  unset io_prometheus_type
+  declare -A -g io_prometheus_type
+  unset io_prometheus_labelnames
+  declare -A -g io_prometheus_labelnames
 }
 
 # This function outputs text compatible with version 0.0.4 of the
@@ -307,6 +303,47 @@ io::prometheus::gauge::set() {
   return 0
 }
 
+io::prometheus::gauge::setToElapsedTime() {
+  local metric_name="$1"
+  local num_labels="$2"
+  shift 2
+
+  # Combine the metric name and the label/value pairs into the series name.
+  local REPLY
+  io::prometheus::internal::assemble_series_name \
+    "${metric_name}" "${num_labels}" "$@" || return
+  local series_name="${REPLY}"
+  shift ${num_labels}
+
+  # Check that we actually have a command to run.
+  if [[ $# -lt 1 ]]; then
+    io::prometheus::internal::PrintfError \
+      '"%s setToElapsedTime" called with %s arguments (expected %s+)\n' \
+      "${metric_name}" $# 1
+    return 1
+  fi
+  local cmd="$1"
+  shift
+
+  local before after
+  before="$( exec 2>&1; set -o posix; TIMEFORMAT='%3R'; time; )"
+
+  local rc=0
+  "${cmd}" "$@"
+  rc=$?
+
+  after="$( exec 2>&1; set -o posix; TIMEFORMAT='%3R'; time; )"
+  
+  local REPLY
+  if io::prometheus::internal::Addition "${after}" -"${before}"; then
+    if [[ "${REPLY}" =~ ^[0-9] ]]; then
+      io_prometheus_value["${series_name}"]="${REPLY}"
+    fi
+  fi
+
+  return ${rc}
+}
+
 io::prometheus::gauge::sub() {
   local metric_name="$1"
   local num_labels="$2"
@@ -404,7 +441,7 @@ io::prometheus::internal::DispatchGauge() {
   done
 
   case "${methodname}" in
-  add|collect|dec|inc|set|sub)
+  add|collect|dec|inc|set|setToElapsedTime|sub)
     io::prometheus::gauge::${methodname} \
       "${metricname}" "${#label_args[@]}" "${label_args[@]}" "$@"
     ;;

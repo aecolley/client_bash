@@ -10,7 +10,8 @@ test_simple() {
   sleep 1
   end_time set 1428782597 || return
   io::prometheus::ExportToFile "/tmp/prometheus_actual_test_simple.$$" || return
-  diff -u - "/tmp/prometheus_actual_test_simple.$$" <<'TEST_EXPECTED_EOF'
+  local rc=0
+  diff -u - "/tmp/prometheus_actual_test_simple.$$" <<'TEST_EXPECTED_EOF' || rc=$?
 # TYPE start_time gauge
 # HELP start_time time_t when something started
 start_time 1428782596
@@ -19,6 +20,7 @@ start_time 1428782596
 end_time 1428782597
 TEST_EXPECTED_EOF
   rm -f "/tmp/prometheus_actual_test_simple.$$"
+  return ${rc}
 }
 
 # According to the client data exposition format, any leading whitespace in
@@ -29,12 +31,14 @@ test_weird_help() {
 ARE BEL'\''ONG TO US' || return
   mojibake  set 23 || return
   io::prometheus::ExportToFile "/tmp/prometheus_actual_test_weird_help$$" || return
-  diff -u - "/tmp/prometheus_actual_test_weird_help$$" <<'TEST_EXPECTED_EOF'
+  local rc=0
+  diff -u - "/tmp/prometheus_actual_test_weird_help$$" <<'TEST_EXPECTED_EOF' || rc=$?
 # TYPE mojibake gauge
 # HELP mojibake  ALL Y"OUR B\\ASE\nARE BEL'ONG TO US
 mojibake 23
 TEST_EXPECTED_EOF
   rm -f "/tmp/prometheus_actual_test_weird_help$$"
+  return ${rc}
 }
 
 test_labels() {
@@ -46,13 +50,15 @@ test_labels() {
   io::prometheus::ExportToFile "/tmp/prometheus_actual_test_labels.$$" || return
   LC_COLLATE=C sort -o "/tmp/prometheus_actual_test_labels.$$" \
     "/tmp/prometheus_actual_test_labels.$$" || return
-  diff -u - "/tmp/prometheus_actual_test_labels.$$" <<'TEST_EXPECTED_EOF'
+  local rc=0
+  diff -u - "/tmp/prometheus_actual_test_labels.$$" <<'TEST_EXPECTED_EOF' || rc=$?
 # HELP falling_speed meters per second (terminal velocity)
 # TYPE falling_speed gauge
 falling_speed{faller="Chell"} 301
 falling_speed{faller="GLaDOS"} 300
 TEST_EXPECTED_EOF
   rm -f "/tmp/prometheus_actual_test_labels.$$"
+  return ${rc}
 }
 
 test_weird_labels() {
@@ -69,7 +75,8 @@ test_weird_labels() {
   io::prometheus::ExportToFile "/tmp/prometheus_actual_test_weird_labels.$$" || return
   LC_COLLATE=C sort -o "/tmp/prometheus_actual_test_weird_labels.$$" \
     "/tmp/prometheus_actual_test_weird_labels.$$" || return
-  diff -u - "/tmp/prometheus_actual_test_weird_labels.$$" <<'TEST_EXPECTED_EOF'
+  local rc=0
+  diff -u - "/tmp/prometheus_actual_test_weird_labels.$$" <<'TEST_EXPECTED_EOF' || rc=$?
 # HELP alien_heart_count vivisection results
 # TYPE alien_heart_count gauge
 alien_heart_count{species="'uman"} 1
@@ -79,6 +86,25 @@ alien_heart_count{species="Vl\"hurg"} 7
 alien_heart_count{species="☃"} 0
 TEST_EXPECTED_EOF
   rm -f "/tmp/prometheus_actual_test_weird_labels.$$"
+  return ${rc}
+}
+
+test_setToElapsedTime() {
+  io::prometheus::DiscardAllMetrics
+  io::prometheus::NewGauge name=duration help='Seconds "sleep 2" took to run'
+  duration setToElapsedTime sleep 2 || return
+  local collection savedDuration
+  collection="$(duration collect)" || return
+  savedDuration="$(printf '%s\n' "${collection}" | sed -n -e 's/^duration //p')"
+  case "${savedDuration}" in
+  1.9*) : close enough ;;
+  2)    : right on ;;
+  2.0*) : close enough ;;
+  *)
+    printf 1>&2 'Expected "duration 2" but got:\n%s\n' "${collection}"
+    return 1
+  esac
+  return 0
 }
 
 alltests() {
@@ -86,6 +112,7 @@ alltests() {
   test_weird_help || return
   test_labels || return
   test_weird_labels || return
+  test_setToElapsedTime || return
 }
 
 main() {
