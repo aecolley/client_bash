@@ -119,11 +119,11 @@ io::prometheus::ExportToFile() {
 # Create a new metric of type Gauge.
 io::prometheus::NewGauge() {
   local name='' help='' labels=''
-  io::prometheus::internal::ParseDdStyleArgs 0 \
+  io::prometheus::internal::ParseDdStyleArgs "${FUNCNAME[0]}" \
     'name' 'help' '~labels' -- "$@" || return
 
   # Check syntax of the metric name and label names (and canonicalize them).
-  io::prometheus::internal::CheckValidMetricName 0 "${name}" || return
+  io::prometheus::internal::CheckValidMetricName "${name}" || return
   local -a labelnames
   local savedIFS="$IFS"
   IFS=','
@@ -132,16 +132,14 @@ io::prometheus::NewGauge() {
   IFS="${savedIFS}"
   local label
   for label in "${labelnames[@]}"; do
-    io::prometheus::internal::CheckValidLabelName 0 "${label}" || return
+    io::prometheus::internal::CheckValidLabelName "${label}" || return
   done
 
   # Warn about duplicate metric names.
   if [[ -n "${io_prometheus_type["${name}"]:-}" ]]; then
-    printf 1>&2 'WARNING: [%s:%s] "%s" is already a registered %s\n' \
-      "${BASH_SOURCE[1]}" "${BASH_LINENO[0]}" \
+    io::prometheus::internal::PrintfError \
+      '"%s" is already a registered %s\n' \
       "${name}" "${io_prometheus_type["${name}"]}"
-    printf 1>&2 'WARNING as error (dbg)\n'
-    return 2
   fi
 
   # Initialize the new gauge.
@@ -363,26 +361,24 @@ io::prometheus::internal::Addition() {
 }
 
 io::prometheus::internal::CheckValidLabelName() {
-  local skip=$1
-  local name="$2"
+  local name="$1"
   if [[ "${name}" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]; then
     return 0
   else
-    printf 1>&2 'ERROR: [%s:%s] Malformed label name "%s" /%s/\n' \
-      "${BASH_SOURCE[$(($skip+2))]}" "${BASH_LINENO[$(($skip+1))]}" \
+    io::prometheus::internal::PrintfError \
+     'Malformed label name "%s" /%s/\n' \
       "${name}" '^[a-zA-Z_][a-zA-Z0-9_]*$'
     return 1
   fi
 }
 
 io::prometheus::internal::CheckValidMetricName() {
-  local skip=$1
-  local name="$2"
+  local name="$1"
   if [[ "${name}" =~ ^[a-zA-Z_:][a-zA-Z0-9_:]*$ ]]; then
     return 0
   else
-    printf 1>&2 'ERROR: [%s:%s] Malformed metric name "%s" /%s/\n' \
-      "${BASH_SOURCE[$(($skip+2))]}" "${BASH_LINENO[$(($skip+1))]}" \
+    io::prometheus::internal::PrintfError \
+     'Malformed metric name "%s" /%s/\n' \
       "${name}" '^[a-zA-Z_:][a-zA-Z0-9_:]*$'
     return 1
   fi
@@ -454,30 +450,30 @@ io::prometheus::internal::DumpInternalState() {
 }
 
 io::prometheus::internal::DuplicateArg() {
-  local skip=$1
+  local funcname=$1
   local param=$2
-  printf 1>&2 'ERROR: [%s:%s] Duplicate %s arg: %s\n' \
-    "${BASH_SOURCE[$(($skip+1))]}" "${BASH_LINENO[$skip]}" \
-    "${FUNCNAME[$skip]}" "${param}"
+  io::prometheus::internal::PrintfError \
+    'Duplicate %s arg: %s\n' \
+    "${funcname}" "${param}"
   return 1
 }
 
 io::prometheus::internal::MissingArg() {
-  local skip=$1
+  local funcname=$1
   local param=$2
-  printf 1>&2 'ERROR: [%s:%s] Missing %s arg: %s\n' \
-    "${BASH_SOURCE[$(($skip+1))]}" "${BASH_LINENO[$skip]}" \
-    "${FUNCNAME[$skip]}" "${param}"
+  io::prometheus::internal::PrintfError \
+    'Missing %s arg: %s\n' \
+    "${funcname}" "${param}"
   return 1
 }
 
-# Example: io::prometheus::internal::ParseDdStyleArgs 0 foo ~bar -- "$@"
+# Example: io::prometheus::internal::ParseDdStyleArgs "${FUNCNAME[0]}" foo ~bar -- "$@"
 # The 0 is the number of stack frames to skip when generating error messages.
 # The ~ denotes an optional argument; all others are mandatory.
 # Returns 0 if parse successful and params assigned; 1 otherwise.
 io::prometheus::internal::ParseDdStyleArgs() {
   # All our local variables begin with parser_ to avoid accidental capture.
-  local parser_skip=$(($1 + 2)); shift
+  local parser_funcname="$1"; shift
   local -A parser_params
   # parser_params' keys are parameter names; the values are:
   # mandatory - mandatory parameter not seen yet
@@ -506,15 +502,15 @@ io::prometheus::internal::ParseDdStyleArgs() {
         parser_params["${parser_arg}"]=already-seen
         ;;
       already-seen)
-        io::prometheus::internal::DuplicateArg ${parser_skip} "${parser_arg}"
+        io::prometheus::internal::DuplicateArg "${parser_funcname}" "${parser_arg}"
         return 1
         ;;
       *)
-        io::prometheus::internal::UnrecognizedArg ${parser_skip} "${parser_arg}"
+        io::prometheus::internal::UnrecognizedArg "${parser_funcname}" "${parser_arg}"
         return 1
       esac
     else
-      io::prometheus::internal::UnrecognizedArg ${parser_skip} "$1"
+      io::prometheus::internal::UnrecognizedArg "${parser_funcname}" "$1"
       return 1
     fi
     shift
@@ -522,7 +518,7 @@ io::prometheus::internal::ParseDdStyleArgs() {
   # Complain about any mandatory arguments which weren't specified.
   for parser_arg in "${!parser_params[@]}"; do
     if [[ "${parser_params["${parser_arg}"]}" = "mandatory" ]]; then
-      io::prometheus::internal::MissingArg ${parser_skip} "${parser_arg}"
+      io::prometheus::internal::MissingArg "${parser_funcname}" "${parser_arg}"
       return 1
     fi
   done
@@ -556,7 +552,7 @@ io::prometheus::internal::PrintfError() {
 
 io::prometheus::internal::Push() {
   local method='' job='' instance='' gateway=''
-  io::prometheus::internal::ParseDdStyleArgs 1 \
+  io::prometheus::internal::ParseDdStyleArgs "${FUNCNAME[1]}" \
     'method' 'job' '~instance' 'gateway' -- "$@" || return
 
   # Construct the URL to push to.
@@ -585,11 +581,11 @@ io::prometheus::internal::Push() {
 }
 
 io::prometheus::internal::UnrecognizedArg() {
-  local skip=$1
+  local funcname=$1
   local arg=$2
-  printf 1>&2 'ERROR: [%s:%s] Unrecognized %s arg: %s\n' \
-    "${BASH_SOURCE[$(($skip+1))]}" "${BASH_LINENO[$skip]}" \
-    "${FUNCNAME[$skip]}" "${arg}"
+  io::prometheus::internal::PrintfError \
+    'Unrecognized %s arg: %s\n' \
+    "${funcname}" "${arg}"
   return 1
 }
 
