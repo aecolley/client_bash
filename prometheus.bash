@@ -595,12 +595,12 @@ io::prometheus::internal::Push() {
   # Construct the URL to push to.
   local url
   case "${gateway}" in
-  :*)  url="http://localhost${gateway}/metrics/jobs/${job}";;
-  *:*) url="http://${gateway}/metrics/jobs/${job}";;
-  *)   url="http://${gateway}:9091/metrics/jobs/${job}"
+  :*)  url="http://localhost${gateway}/metrics/job/${job}";;
+  *:*) url="http://${gateway}/metrics/job/${job}";;
+  *)   url="http://${gateway}:9091/metrics/job/${job}"
   esac
   if [[ -n "${instance}" ]]; then
-    url="${url}/instances/${instance}"
+    url="${url}/instance/${instance}"
   fi
   # Compose and transmit the metrics.
   io::prometheus::ExportAsText | curl -q \
