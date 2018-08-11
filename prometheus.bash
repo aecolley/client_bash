@@ -588,9 +588,9 @@ io::prometheus::internal::PrintfError() {
 }
 
 io::prometheus::internal::Push() {
-  local method='' job='' instance='' gateway=''
+  local method='' job='' instance='' gateway='' path=''
   io::prometheus::internal::ParseDdStyleArgs "${FUNCNAME[1]}" \
-    'method' 'job' '~instance' 'gateway' -- "$@" || return
+    'method' 'job' '~instance' 'gateway' '~path' -- "$@" || return
 
   # Construct the URL to push to.
   local url
@@ -601,6 +601,9 @@ io::prometheus::internal::Push() {
   esac
   if [[ -n "${instance}" ]]; then
     url="${url}/instance/${instance}"
+  fi
+  if [[ -n "${path}" ]]; then
+    url="${url}/${path}"
   fi
   # Compose and transmit the metrics.
   io::prometheus::ExportAsText | curl -q \
