@@ -25,13 +25,13 @@
 # Example use:
 # io::prometheus::NewGauge name=start_time help='time_t when cron job last started'
 # start_time set $(date +'%s.%N')
-# io::prometheus::PushAdd cronjob $HOSTNAME pushgateway0:9091
+# io::prometheus::PushAdd job=cronjob instance=$HOSTNAME gateway=pushgateway0:9091
 
 # An example with labels (which doesn't work yet):
 # io::prometheus::NewGauge name=start_time help='time_t when cron job last started' \
 #   labels=host,runmode
 # start_time -host=spof0 -runmode=PRODUCTION set $(date +'%s.%N')
-# io::prometheus::PushAdd cronjob $HOSTNAME pushgateway0:9091
+# io::prometheus::PushAdd job=cronjob instance=$HOSTNAME gateway=pushgateway0:9091
 
 # Note to self: metric names match ^[a-zA-Z_:][a-zA-Z0-9_:]*$ and
 # label names match ^[a-zA-Z_][a-zA-Z0-9_]*$ according to
