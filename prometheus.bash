@@ -249,7 +249,7 @@ io::prometheus::gauge::dec() {
     return 1
   fi
   io::prometheus::internal::Addition \
-    "${io_prometheus_value["${series_name}"]:-0}" 1 || return
+    "${io_prometheus_value["${series_name}"]:-0}" -1 || return
   io_prometheus_value["${series_name}"]="${REPLY}"
   return 0
 }
